@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fit Track</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    /* ── Reset & Base ─────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:     #080c14;
+      --card:   #0f1521;
+      --border: #1a2540;
+      --text:   #e8edf5;
+      --muted:  #5a7090;
+      --green:  #00ffa3;
+      --amber:  #ffb347;
+      --blue:   #4fc3ff;
+      --red:    #ff5757;
+      --purple: #b57bff;
+    }
+
+    body {
+      font-family: 'Outfit', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Loading Overlay ──────────────────────────── */
+    #loading-overlay {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 9999;
+      transition: opacity 0.3s;
+    }
+    #loading-overlay.hidden { opacity: 0; pointer-events: none; }
+
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--green);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Toast ────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%;
+      transform: translateX(-50%) translateY(80px);
+      background: var(--green); color: var(--bg);
+      padding: 11px 22px; border-radius: 100px;
+      font-weight: 700; font-size: 0.82rem; letter-spacing: 0.05em;
+      transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      z-index: 1000; white-space: nowrap; pointer-events: none;
+    }
+    #toast.show  { transform: translateX(-50%) translateY(0); }
+    #toast.error { background: var(--red); color: #fff; }
+
+    /* ── Header ───────────────────────────────────── */
+    header {
+      padding: 20px 20px 0;
+      background: linear-gradient(180deg, #0f1829 0%, transparent 100%);
+    }
+    .header-inner { display: flex; justify-content: space-between; align-items: flex-start; }
+    .app-title    { font-family: 'Bebas Neue', cursive; font-size: 2rem; letter-spacing: 0.05em; color: var(--green); line-height: 1; }
+    .header-date  { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-top: 3px; }
+    .hdr-stat-val { font-family: 'Bebas Neue', cursive; font-size: 2rem; color: var(--amber); line-height: 1; text-align: right; }
+    .hdr-stat-lbl { font-size: 0.63rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; text-align: right; }
+
+    /* ── Main Tabs ────────────────────────────────── */
+    .tabs { display: flex; gap: 4px; padding: 16px 20px; overflow-x: auto; scrollbar-width: none; }
+    .tab {
+      padding: 8px 18px; border-radius: 100px; border: none;
+      background: #13192a; color: var(--muted);
+      font-family: 'Outfit', sans-serif; font-size: 0.85rem; font-weight: 500;
+      cursor: pointer; white-space: nowrap; transition: all 0.2s;
+    }
+    .tab.active { background: var(--green); color: var(--bg); font-weight: 700; }
+
+    /* ── Tab Content ──────────────────────────────── */
+    .tab-content         { display: none; padding-bottom: 48px; }
+    .tab-content.active  { display: block; }
+
+    /* ── Mini Cards (dashboard) ───────────────────── */
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; padding: 0 20px; margin-bottom: 16px; }
+    .mini-card { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px 12px; }
+    .mini-label { font-size: 0.63rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 6px; }
+    .mini-value { font-family: 'Bebas Neue', cursive; font-size: 1.6rem; line-height: 1; letter-spacing: 0.02em; }
+    .mini-sub   { font-size: 0.63rem; color: var(--muted); margin-top: 3px; }
+
+    /* ── Progress Bars ────────────────────────────── */
+    .bar-wrap { background: var(--border); border-radius: 100px; height: 3px; margin-top: 7px; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 100px; transition: width 0.6s ease; }
+
+    /* ── Section Label ────────────────────────────── */
+    .section-label { font-family: 'Bebas Neue', cursive; font-size: 1rem; letter-spacing: 0.08em; color: #8ab0cc; padding: 0 20px; margin-bottom: 10px; }
+
+    /* ── Quick Add ────────────────────────────────── */
+    .quick-add { display: flex; gap: 8px; padding: 0 20px; margin-bottom: 20px; }
+    .quick-add button {
+      flex: 1; padding: 12px 8px;
+      background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+      color: #8ab0cc; font-family: 'Outfit', sans-serif; font-size: 0.78rem; font-weight: 500;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .quick-add button:hover { border-color: var(--green); color: var(--green); }
+
+    /* ── Cards ────────────────────────────────────── */
+    .card       { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; margin: 0 20px 16px; }
+    .card-flush { padding: 0; overflow: hidden; }
+
+    /* ── Recent Entries ───────────────────────────── */
+    .entry        { display: flex; align-items: center; justify-content: space-between; padding: 13px 18px; border-bottom: 1px solid var(--border); }
+    .entry:last-child { border-bottom: none; }
+    .entry-title  { font-size: 0.9rem; font-weight: 500; }
+    .entry-sub    { font-size: 0.73rem; color: var(--muted); margin-top: 2px; }
+    .entry-val    { font-family: 'Bebas Neue', cursive; font-size: 1.3rem; letter-spacing: 0.04em; }
+
+    /* ── Empty State ──────────────────────────────── */
+    .empty-state { text-align: center; padding: 36px 20px; color: var(--muted); font-size: 0.85rem; }
+    .empty-icon  { font-size: 2rem; margin-bottom: 10px; opacity: 0.5; display: block; }
+
+    /* ── Sub Tabs (Log) ───────────────────────────── */
+    .sub-tabs {
+      display: flex; background: var(--card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 4px; margin: 0 20px 16px;
+    }
+    .sub-tab {
+      flex: 1; padding: 8px 4px; border-radius: 9px; border: none;
+      background: transparent; color: var(--muted);
+      font-family: 'Outfit', sans-serif; font-size: 0.78rem; font-weight: 500;
+      cursor: pointer; transition: all 0.2s; text-align: center;
+    }
+    .sub-tab.active { background: var(--green); color: var(--bg); font-weight: 700; }
+
+    /* ── Form Elements ────────────────────────────── */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .field  { margin-bottom: 14px; }
+
+    .label {
+      display: block; font-size: 0.72rem; text-transform: uppercase;
+      letter-spacing: 0.1em; color: var(--muted); margin-bottom: 6px;
+    }
+
+    .input {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 10px; padding: 11px 14px; color: var(--text);
+      font-family: 'Outfit', sans-serif; font-size: 0.9rem;
+      outline: none; transition: border-color 0.2s; appearance: none;
+    }
+    .input:focus       { border-color: var(--green); }
+    .input::placeholder { color: #2a3a50; }
+
+    .btn {
+      width: 100%; padding: 14px; background: var(--green); border: none;
+      border-radius: 12px; color: var(--bg);
+      font-family: 'Bebas Neue', cursive; font-size: 1.1rem; letter-spacing: 0.08em;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .btn:hover:not(:disabled) { background: #00e694; transform: translateY(-1px); }
+    .btn:active:not(:disabled) { transform: none; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-cancel {
+      flex: 1; padding: 13px; background: transparent;
+      border: 1px solid var(--border); border-radius: 12px;
+      color: var(--muted); font-family: 'Outfit', sans-serif; font-size: 0.9rem; cursor: pointer;
+    }
+
+    /* ── Range Buttons (Progress) ─────────────────── */
+    .range-btns { display: flex; gap: 6px; padding: 0 20px; margin-bottom: 12px; }
+    .range-btn {
+      padding: 5px 14px; border-radius: 100px;
+      border: 1px solid var(--border); background: transparent;
+      color: var(--muted); font-size: 0.75rem; font-family: 'Outfit', sans-serif; cursor: pointer; transition: all 0.2s;
+    }
+    .range-btn.active { border-color: var(--green); color: var(--green); background: rgba(0,255,163,0.06); }
+
+    /* ── Chart container ──────────────────────────── */
+    .chart-wrap { position: relative; height: 180px; }
+
+    /* ── Goal Cards ───────────────────────────────── */
+    .goal-card        { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px 20px; margin: 0 20px 12px; }
+    .goal-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .goal-label       { font-size: 0.68rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 3px; }
+    .goal-value       { font-weight: 600; font-size: 0.9rem; }
+    .goal-pct         { font-family: 'Bebas Neue', cursive; font-size: 1.3rem; letter-spacing: 0.04em; }
+    .goal-bar         { background: var(--border); border-radius: 100px; height: 6px; overflow: hidden; }
+    .goal-bar-fill    { height: 100%; border-radius: 100px; transition: width 0.7s ease; }
+
+    /* ── Edit Goals button ────────────────────────── */
+    .edit-btn {
+      padding: 9px 18px; background: transparent;
+      border: 1px solid var(--green); border-radius: 10px;
+      color: var(--green); font-family: 'Outfit', sans-serif; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+    }
+    .card-title { font-family: 'Bebas Neue', cursive; font-size: 1rem; letter-spacing: 0.06em; color: #8ab0cc; margin-bottom: 16px; }
+
+    /* ── Color helpers ────────────────────────────── */
+    .col-green  { color: var(--green);  }
+    .col-amber  { color: var(--amber);  }
+    .col-blue   { color: var(--blue);   }
+    .col-purple { color: var(--purple); }
+
+    /* ── Responsive ───────────────────────────────── */
+    @media (max-width: 360px) {
+      .grid-3    { gap: 6px; }
+      .mini-value { font-size: 1.3rem; }
+      .sub-tab   { font-size: 0.7rem; padding: 8px 2px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Loading Overlay -->
+<div id="loading-overlay"><div class="spinner"></div></div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- ══ HEADER ══════════════════════════════════════ -->
+<header>
+  <div class="header-inner">
+    <div>
+      <div class="app-title">FIT TRACK</div>
+      <div class="header-date" id="header-date"></div>
+    </div>
+    <div>
+      <div class="hdr-stat-val" id="hdr-steps-pct">0%</div>
+      <div class="hdr-stat-lbl">Steps Goal</div>
+    </div>
+  </div>
+</header>
+
+<!-- ══ MAIN TABS ════════════════════════════════════ -->
+<nav class="tabs">
+  <button class="tab active" data-tab="dashboard">Dashboard</button>
+  <button class="tab"        data-tab="log">Log</button>
+  <button class="tab"        data-tab="progress">Progress</button>
+  <button class="tab"        data-tab="goals">Goals</button>
+</nav>
+
+<!-- ══ DASHBOARD ════════════════════════════════════ -->
+<section id="tab-dashboard" class="tab-content active">
+
+  <div class="grid-3">
+    <div class="mini-card">
+      <div class="mini-label">Weight</div>
+      <div class="mini-value col-blue" id="dash-weight">—</div>
+      <div class="mini-sub" id="dash-weight-unit">kg</div>
+    </div>
+    <div class="mini-card">
+      <div class="mini-label">Calories</div>
+      <div class="mini-value col-amber" id="dash-calories">—</div>
+      <div class="mini-sub">today</div>
+      <div class="bar-wrap" id="cal-bar-wrap" style="display:none">
+        <div class="bar-fill" id="cal-bar" style="width:0%"></div>
+      </div>
+    </div>
+    <div class="mini-card">
+      <div class="mini-label">Steps</div>
+      <div class="mini-value col-green" id="dash-steps">—</div>
+      <div class="mini-sub">today</div>
+      <div class="bar-wrap" id="step-bar-wrap" style="display:none">
+        <div class="bar-fill" id="step-bar" style="width:0%"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">Quick Add</div>
+  <div class="quick-add">
+    <button onclick="gotoLog('weight')">⚖️ Weight</button>
+    <button onclick="gotoLog('nutrition')">🍽 Meal</button>
+    <button onclick="gotoLog('cardio')">🏃 Activity</button>
+  </div>
+
+  <div class="section-label">Recent Entries</div>
+  <div class="card card-flush" id="recent-list">
+    <div class="empty-state">
+      <span class="empty-icon">📋</span>
+      No entries yet — start logging!
+    </div>
+  </div>
+
+</section>
+
+<!-- ══ LOG ══════════════════════════════════════════ -->
+<section id="tab-log" class="tab-content">
+
+  <div class="sub-tabs">
+    <button class="sub-tab active" id="sub-weight"    onclick="switchLogType('weight')">⚖️ Weight</button>
+    <button class="sub-tab"        id="sub-nutrition" onclick="switchLogType('nutrition')">🍽 Nutrition</button>
+    <button class="sub-tab"        id="sub-cardio"    onclick="switchLogType('cardio')">🏃 Activity</button>
+  </div>
+
+  <!-- Weight Form -->
+  <div id="log-weight" class="card">
+    <form onsubmit="submitWeight(event)">
+      <div class="grid-2" style="margin-bottom:14px">
+        <div>
+          <label class="label">Weight *</label>
+          <input class="input" type="number" step="0.1" placeholder="70.5" id="wf-weight" required />
+        </div>
+        <div>
+          <label class="label">Unit</label>
+          <select class="input" id="wf-unit">
+            <option value="kg">kg</option>
+            <option value="lbs">lbs</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label class="label">Date</label>
+        <input class="input" type="date" id="wf-date" />
+      </div>
+      <button class="btn" type="submit" id="wf-btn">Log Weight</button>
+    </form>
+  </div>
+
+  <!-- Nutrition Form -->
+  <div id="log-nutrition" class="card" style="display:none">
+    <form onsubmit="submitNutrition(event)">
+      <div class="field">
+        <label class="label">Meal Label</label>
+        <input class="input" type="text" placeholder="Breakfast, Lunch, Snack…" id="nf-label" />
+      </div>
+      <div class="field">
+        <label class="label">Calories (kcal) *</label>
+        <input class="input" type="number" placeholder="500" id="nf-calories" required />
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label class="label">Protein (g)</label>
+          <input class="input" type="number" placeholder="0" id="nf-protein" />
+        </div>
+        <div class="field">
+          <label class="label">Carbs (g)</label>
+          <input class="input" type="number" placeholder="0" id="nf-carbs" />
+        </div>
+        <div class="field">
+          <label class="label">Fat (g)</label>
+          <input class="input" type="number" placeholder="0" id="nf-fat" />
+        </div>
+        <div class="field">
+          <label class="label">Date</label>
+          <input class="input" type="date" id="nf-date" />
+        </div>
+      </div>
+      <button class="btn" type="submit" id="nf-btn">Log Meal</button>
+    </form>
+  </div>
+
+  <!-- Cardio / Activity Form -->
+  <div id="log-cardio" class="card" style="display:none">
+    <form onsubmit="submitCardio(event)">
+      <div class="field">
+        <label class="label">Activity Type</label>
+        <select class="input" id="cf-activity">
+          <option>Walking</option><option>Running</option><option>Cycling</option>
+          <option>Swimming</option><option>HIIT</option><option>Gym</option>
+          <option>Yoga</option><option>Other</option>
+        </select>
+      </div>
+      <div class="grid-2">
+        <div class="field">
+          <label class="label">Steps</label>
+          <input class="input" type="number" placeholder="8000" id="cf-steps" />
+        </div>
+        <div class="field">
+          <label class="label">Duration (min)</label>
+          <input class="input" type="number" placeholder="30" id="cf-duration" />
+        </div>
+        <div class="field">
+          <label class="label">Distance (km)</label>
+          <input class="input" type="number" step="0.1" placeholder="3.5" id="cf-distance" />
+        </div>
+        <div class="field">
+          <label class="label">Date</label>
+          <input class="input" type="date" id="cf-date" />
+        </div>
+      </div>
+      <button class="btn" type="submit" id="cf-btn">Log Activity</button>
+    </form>
+  </div>
+
+</section>
+
+<!-- ══ PROGRESS ══════════════════════════════════════ -->
+<section id="tab-progress" class="tab-content">
+
+  <div class="range-btns">
+    <button class="range-btn active" onclick="setRange(7,  this)">7D</button>
+    <button class="range-btn"        onclick="setRange(14, this)">14D</button>
+    <button class="range-btn"        onclick="setRange(30, this)">30D</button>
+  </div>
+
+  <div class="section-label">Weight Trend</div>
+  <div class="card">
+    <div class="chart-wrap"><canvas id="chart-weight"></canvas></div>
+    <div class="empty-state" id="weight-chart-empty" style="display:none">
+      <span class="empty-icon">⚖️</span>Log 2+ entries to see your weight trend
+    </div>
+  </div>
+
+  <div class="section-label">Daily Calories</div>
+  <div class="card">
+    <div class="chart-wrap"><canvas id="chart-calories"></canvas></div>
+    <div class="empty-state" id="cal-chart-empty" style="display:none">
+      <span class="empty-icon">🍽</span>No nutrition data yet
+    </div>
+  </div>
+
+  <div class="section-label">Daily Steps</div>
+  <div class="card">
+    <div class="chart-wrap"><canvas id="chart-steps"></canvas></div>
+    <div class="empty-state" id="steps-chart-empty" style="display:none">
+      <span class="empty-icon">🏃</span>No step data yet
+    </div>
+  </div>
+
+</section>
+
+<!-- ══ GOALS ══════════════════════════════════════════ -->
+<section id="tab-goals" class="tab-content">
+
+  <div style="padding:0 20px;margin-bottom:16px">
+    <button class="edit-btn" onclick="toggleGoalEdit()">✏️ Edit Goals</button>
+  </div>
+
+  <div id="goals-view"><!-- rendered by JS --></div>
+
+  <div id="goals-edit" class="card" style="display:none">
+    <div class="card-title">Set Your Goals</div>
+    <form onsubmit="submitGoals(event)">
+      <div class="grid-2">
+        <div class="field">
+          <label class="label">Daily Calories (kcal)</label>
+          <input class="input" type="number" id="gf-calories" placeholder="2000" />
+        </div>
+        <div class="field">
+          <label class="label">Daily Steps</label>
+          <input class="input" type="number" id="gf-steps" placeholder="10000" />
+        </div>
+        <div class="field">
+          <label class="label">Target Weight</label>
+          <input class="input" type="number" step="0.1" id="gf-weight" placeholder="70" />
+        </div>
+        <div class="field">
+          <label class="label">Daily Protein (g)</label>
+          <input class="input" type="number" id="gf-protein" placeholder="150" />
+        </div>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button type="button" class="btn-cancel" onclick="toggleGoalEdit()">Cancel</button>
+        <button type="submit" class="btn" style="flex:2" id="gf-btn">Save Goals</button>
+      </div>
+    </form>
+  </div>
+
+</section>
+
+<!-- ══════════════════════════════════════════════════
+     JAVASCRIPT
+══════════════════════════════════════════════════ -->
+<script>
+// ── State ─────────────────────────────────────────
+const state = {
+  weight:    [],
+  nutrition: [],
+  cardio:    [],
+  goals:     { calories: 2000, steps: 10000, weight: 70, protein: 150 },
+  range:     7,
+};
+
+let charts = {};
+
+// ── Utils ──────────────────────────────────────────
+const today = () => new Date().toISOString().split('T')[0];
+
+function fmtDate(d) {
+  return new Date(d + 'T12:00:00').toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric',
+  });
+}
+
+function fmtShort(d) {
+  const p = d.split('-');
+  return `${p[2]}/${p[1]}`;
+}
+
+function getDateRange(n) {
+  return Array.from({ length: n }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (n - 1 - i));
+    return d.toISOString().split('T')[0];
+  });
+}
+
+function pct(current, goal) {
+  if (!goal || !current) return 0;
+  return Math.min(100, Math.round((current / goal) * 100));
+}
+
+// ── Loading & Toast ────────────────────────────────
+function showLoading(on) {
+  document.getElementById('loading-overlay').classList.toggle('hidden', !on);
+}
+
+let toastTimer;
+function showToast(msg, type = 'success') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show' + (type === 'error' ? ' error' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 2200);
+}
+
+// ── API helper ─────────────────────────────────────
+async function apiCall(action, method = 'GET', body = null) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(`/api/sheets?action=${action}`, opts);
+  if (!res.ok) throw new Error(`API ${res.status}`);
+  return res.json();
+}
+
+// ── Init ───────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  document.getElementById('header-date').textContent =
+    new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+  // Default all date inputs to today
+  ['wf-date', 'nf-date', 'cf-date'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = today();
+  });
+
+  // Tab navigation
+  document.querySelectorAll('.tab').forEach(btn => {
+    btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+  });
+
+  await loadAll();
+  renderDashboard();
+  renderGoals();
+  initCharts();
+});
+
+// ── Load All Data ──────────────────────────────────
+async function loadAll() {
+  showLoading(true);
+  try {
+    const data      = await apiCall('all');
+    state.weight    = (data.weight    || []).map(normalizeWeight);
+    state.nutrition = (data.nutrition || []).map(normalizeNutrition);
+    state.cardio    = (data.cardio    || []).map(normalizeCardio);
+    state.goals     = data.goals      || state.goals;
+  } catch (e) {
+    console.error(e);
+    showToast('Could not load data — check your API setup', 'error');
+  } finally {
+    showLoading(false);
+  }
+}
+
+function normalizeWeight(r)    { return { id: r.id, date: r.date, weight: +r.weight, unit: r.unit || 'kg' }; }
+function normalizeNutrition(r) { return { id: r.id, date: r.date, label: r.label || '', calories: +r.calories, protein: +r.protein || 0, carbs: +r.carbs || 0, fat: +r.fat || 0 }; }
+function normalizeCardio(r)    { return { id: r.id, date: r.date, activity: r.activity || 'Activity', steps: +r.steps || 0, duration: +r.duration || 0, distance: +r.distance || 0 }; }
+
+// ── Tab Switching ──────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+  document.querySelectorAll('.tab-content').forEach(s => s.classList.toggle('active', s.id === `tab-${name}`));
+  if (name === 'progress') updateCharts();
+}
+
+function gotoLog(type) {
+  switchTab('log');
+  switchLogType(type);
+}
+
+// ── Log Type Switching ─────────────────────────────
+function switchLogType(type) {
+  ['weight', 'nutrition', 'cardio'].forEach(t => {
+    document.getElementById(`log-${t}`).style.display  = t === type ? 'block' : 'none';
+    document.getElementById(`sub-${t}`).classList.toggle('active', t === type);
+  });
+}
+
+// ── Submit: Weight ─────────────────────────────────
+async function submitWeight(e) {
+  e.preventDefault();
+  const btn   = document.getElementById('wf-btn');
+  const entry = {
+    date:   document.getElementById('wf-date').value || today(),
+    weight: +document.getElementById('wf-weight').value,
+    unit:   document.getElementById('wf-unit').value,
+  };
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const { id } = await apiCall('addWeight', 'POST', entry);
+    entry.id = id;
+    state.weight.push(entry);
+    document.getElementById('wf-weight').value = '';
+    renderDashboard(); updateCharts();
+    showToast('Weight logged ✓');
+  } catch { showToast('Failed to save', 'error'); }
+  finally   { btn.disabled = false; btn.textContent = 'Log Weight'; }
+}
+
+// ── Submit: Nutrition ──────────────────────────────
+async function submitNutrition(e) {
+  e.preventDefault();
+  const btn   = document.getElementById('nf-btn');
+  const entry = {
+    date:     document.getElementById('nf-date').value     || today(),
+    label:    document.getElementById('nf-label').value    || '',
+    calories: +document.getElementById('nf-calories').value,
+    protein:  +document.getElementById('nf-protein').value || 0,
+    carbs:    +document.getElementById('nf-carbs').value   || 0,
+    fat:      +document.getElementById('nf-fat').value     || 0,
+  };
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const { id } = await apiCall('addNutrition', 'POST', entry);
+    entry.id = id;
+    state.nutrition.push(entry);
+    ['nf-label','nf-calories','nf-protein','nf-carbs','nf-fat'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    renderDashboard(); renderGoals(); updateCharts();
+    showToast('Meal logged ✓');
+  } catch { showToast('Failed to save', 'error'); }
+  finally   { btn.disabled = false; btn.textContent = 'Log Meal'; }
+}
+
+// ── Submit: Cardio ─────────────────────────────────
+async function submitCardio(e) {
+  e.preventDefault();
+  const steps    = document.getElementById('cf-steps').value;
+  const duration = document.getElementById('cf-duration').value;
+  if (!steps && !duration) { showToast('Enter steps or duration', 'error'); return; }
+
+  const btn   = document.getElementById('cf-btn');
+  const entry = {
+    date:     document.getElementById('cf-date').value     || today(),
+    activity: document.getElementById('cf-activity').value,
+    steps:    +steps    || 0,
+    duration: +duration || 0,
+    distance: +document.getElementById('cf-distance').value || 0,
+  };
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const { id } = await apiCall('addCardio', 'POST', entry);
+    entry.id = id;
+    state.cardio.push(entry);
+    ['cf-steps','cf-duration','cf-distance'].forEach(id => {
+      document.getElementById(id).value = '';
+    });
+    renderDashboard(); renderGoals(); updateCharts();
+    showToast('Activity logged ✓');
+  } catch { showToast('Failed to save', 'error'); }
+  finally   { btn.disabled = false; btn.textContent = 'Log Activity'; }
+}
+
+// ── Submit: Goals ──────────────────────────────────
+async function submitGoals(e) {
+  e.preventDefault();
+  const btn   = document.getElementById('gf-btn');
+  const goals = {
+    calories: +document.getElementById('gf-calories').value || state.goals.calories,
+    steps:    +document.getElementById('gf-steps').value    || state.goals.steps,
+    weight:   +document.getElementById('gf-weight').value   || state.goals.weight,
+    protein:  +document.getElementById('gf-protein').value  || state.goals.protein,
+  };
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await apiCall('saveGoals', 'POST', goals);
+    state.goals = goals;
+    toggleGoalEdit();
+    renderDashboard(); renderGoals();
+    showToast('Goals saved ✓');
+  } catch { showToast('Failed to save', 'error'); }
+  finally   { btn.disabled = false; btn.textContent = 'Save Goals'; }
+}
+
+// ── Render: Dashboard ──────────────────────────────
+function renderDashboard() {
+  const t          = today();
+  const latestW    = state.weight.length ? state.weight[state.weight.length - 1] : null;
+  const todayCal   = state.nutrition.filter(l => l.date === t).reduce((a, l) => a + l.calories, 0);
+  const todaySteps = state.cardio.filter(l => l.date === t).reduce((a, l) => a + l.steps, 0);
+  const calPct     = pct(todayCal, state.goals.calories);
+  const stepPct    = pct(todaySteps, state.goals.steps);
+
+  // Header stat
+  document.getElementById('hdr-steps-pct').textContent = `${stepPct}%`;
+
+  // Stat cards
+  document.getElementById('dash-weight').textContent      = latestW ? latestW.weight : '—';
+  document.getElementById('dash-weight-unit').textContent = latestW ? latestW.unit   : 'kg';
+  document.getElementById('dash-calories').textContent    = todayCal   || '—';
+  document.getElementById('dash-steps').textContent       =
+    todaySteps >= 1000 ? `${(todaySteps / 1000).toFixed(1)}k` : (todaySteps || '—');
+
+  // Progress bars
+  const calWrap  = document.getElementById('cal-bar-wrap');
+  const stepWrap = document.getElementById('step-bar-wrap');
+  calWrap.style.display  = todayCal   > 0 ? 'block' : 'none';
+  stepWrap.style.display = todaySteps > 0 ? 'block' : 'none';
+  document.getElementById('cal-bar').style.cssText  =
+    `width:${calPct}%; background:${calPct >= 100 ? 'var(--red)' : 'var(--amber)'}`;
+  document.getElementById('step-bar').style.cssText =
+    `width:${stepPct}%; background:${stepPct >= 100 ? 'var(--green)' : 'var(--blue)'}`;
+
+  // Recent entries (last 6 across all types)
+  const all = [
+    ...state.weight.map(l    => ({ ...l, _cat: 'weight'    })),
+    ...state.nutrition.map(l => ({ ...l, _cat: 'nutrition' })),
+    ...state.cardio.map(l    => ({ ...l, _cat: 'cardio'    })),
+  ].sort((a, b) => (b.id > a.id ? 1 : -1)).slice(0, 6);
+
+  const list = document.getElementById('recent-list');
+  if (!all.length) {
+    list.innerHTML = `<div class="empty-state"><span class="empty-icon">📋</span>No entries yet — start logging!</div>`;
+    return;
+  }
+
+  list.innerHTML = all.map(e => {
+    let title, val, color;
+    if (e._cat === 'weight') {
+      title = 'Body Weight';
+      val   = `${e.weight} ${e.unit}`;
+      color = 'var(--blue)';
+    } else if (e._cat === 'nutrition') {
+      title = e.label || 'Meal';
+      val   = `${e.calories} kcal`;
+      color = 'var(--amber)';
+    } else {
+      title = e.activity || 'Activity';
+      val   = e.steps ? `${e.steps.toLocaleString()} steps` : `${e.duration} min`;
+      color = 'var(--green)';
+    }
+    return `
+      <div class="entry">
+        <div>
+          <div class="entry-title">${title}</div>
+          <div class="entry-sub">${fmtDate(e.date)}</div>
+        </div>
+        <div class="entry-val" style="color:${color}">${val}</div>
+      </div>`;
+  }).join('');
+}
+
+// ── Render: Goals ──────────────────────────────────
+function renderGoals() {
+  const t            = today();
+  const todayCal     = state.nutrition.filter(l => l.date === t).reduce((a, l) => a + l.calories, 0);
+  const todaySteps   = state.cardio.filter(l => l.date === t).reduce((a, l) => a + l.steps, 0);
+  const todayProtein = state.nutrition.filter(l => l.date === t).reduce((a, l) => a + l.protein, 0);
+  const latestW      = state.weight.length ? state.weight[state.weight.length - 1] : null;
+
+  const wPct = state.goals.weight && latestW
+    ? Math.min(100, Math.max(0, Math.round(
+        100 - Math.abs(latestW.weight - state.goals.weight)
+            / Math.max(state.goals.weight, latestW.weight) * 100
+      )))
+    : 0;
+
+  const items = [
+    { name: 'Daily Calories', icon: '🍽', current: todayCal,     goal: state.goals.calories, unit: 'kcal',              color: 'var(--amber)',  p: pct(todayCal,     state.goals.calories) },
+    { name: 'Daily Steps',    icon: '🏃', current: todaySteps,   goal: state.goals.steps,    unit: 'steps',             color: 'var(--green)',  p: pct(todaySteps,   state.goals.steps)    },
+    { name: 'Target Weight',  icon: '⚖️', current: latestW?.weight, goal: state.goals.weight, unit: latestW?.unit || 'kg', color: 'var(--blue)', p: wPct },
+    { name: 'Daily Protein',  icon: '💪', current: todayProtein, goal: state.goals.protein,  unit: 'g',                 color: 'var(--purple)', p: pct(todayProtein, state.goals.protein)  },
+  ];
+
+  document.getElementById('goals-view').innerHTML = items.map(g => {
+    const cur = (g.current !== undefined && g.current !== null && g.current !== 0)
+      ? Number(g.current).toLocaleString()
+      : '—';
+    return `
+      <div class="goal-card">
+        <div class="goal-card-header">
+          <div>
+            <div class="goal-label">${g.icon} ${g.name}</div>
+            <div class="goal-value" style="color:${g.color}">
+              ${cur}
+              <span style="color:var(--muted);font-weight:400;font-size:.8rem"> / ${g.goal || '—'} ${g.unit}</span>
+            </div>
+          </div>
+          <div class="goal-pct" style="color:${g.color}">${g.p > 0 ? g.p + '%' : '—'}</div>
+        </div>
+        <div class="goal-bar">
+          <div class="goal-bar-fill" style="width:${g.p}%;background:${g.color}"></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function toggleGoalEdit() {
+  const view = document.getElementById('goals-view');
+  const edit = document.getElementById('goals-edit');
+  const editing = edit.style.display === 'block';
+  view.style.display = editing ? 'block' : 'none';
+  edit.style.display = editing ? 'none'  : 'block';
+  if (!editing) {
+    document.getElementById('gf-calories').value = state.goals.calories || '';
+    document.getElementById('gf-steps').value    = state.goals.steps    || '';
+    document.getElementById('gf-weight').value   = state.goals.weight   || '';
+    document.getElementById('gf-protein').value  = state.goals.protein  || '';
+  }
+}
+
+// ── Charts ─────────────────────────────────────────
+const BASE_CHART_OPTS = {
+  responsive:          true,
+  maintainAspectRatio: false,
+  plugins: {
+    legend: { display: false },
+    tooltip: {
+      backgroundColor: '#0f1521',
+      borderColor:     '#1a2540',
+      borderWidth:     1,
+      titleColor:      '#8ab0cc',
+      bodyColor:       '#e8edf5',
+      padding:         10,
+    },
+  },
+  scales: {
+    x: { grid: { color: '#1a2540' }, ticks: { color: '#5a7090', font: { family: 'Outfit' } }, border: { display: false } },
+    y: { grid: { color: '#1a2540' }, ticks: { color: '#5a7090', font: { family: 'Outfit' } }, border: { display: false } },
+  },
+};
+
+function initCharts() {
+  charts.weight = new Chart(document.getElementById('chart-weight'), {
+    type: 'line',
+    data: { labels: [], datasets: [{
+      data: [], borderColor: '#4fc3ff',
+      backgroundColor: 'rgba(79,195,255,0.1)',
+      fill: true, tension: 0.4, pointBackgroundColor: '#4fc3ff', pointRadius: 4, spanGaps: true,
+    }]},
+    options: { ...BASE_CHART_OPTS,
+      scales: { ...BASE_CHART_OPTS.scales, y: { ...BASE_CHART_OPTS.scales.y, ticks: { ...BASE_CHART_OPTS.scales.y.ticks, callback: v => `${v}` } } }
+    },
+  });
+
+  charts.calories = new Chart(document.getElementById('chart-calories'), {
+    type: 'bar',
+    data: { labels: [], datasets: [{ data: [], backgroundColor: '#ffb347', borderRadius: 4, maxBarThickness: 28 }] },
+    options: BASE_CHART_OPTS,
+  });
+
+  charts.steps = new Chart(document.getElementById('chart-steps'), {
+    type: 'bar',
+    data: { labels: [], datasets: [{ data: [], backgroundColor: '#00ffa3', borderRadius: 4, maxBarThickness: 28 }] },
+    options: BASE_CHART_OPTS,
+  });
+
+  updateCharts();
+}
+
+function updateCharts() {
+  if (!charts.weight) return;
+  const dates  = getDateRange(state.range);
+  const labels = dates.map(fmtShort);
+
+  // Weight (carry forward last known value)
+  const wData    = dates.map(d => { const e = [...state.weight].filter(l => l.date <= d).pop(); return e ? e.weight : null; });
+  const hasW     = wData.some(v => v !== null);
+  document.getElementById('chart-weight').parentElement.style.display = hasW ? 'block' : 'none';
+  document.getElementById('weight-chart-empty').style.display         = hasW ? 'none'  : 'block';
+  charts.weight.data.labels = labels;
+  charts.weight.data.datasets[0].data = wData;
+  charts.weight.update();
+
+  // Calories
+  const cData = dates.map(d => state.nutrition.filter(l => l.date === d).reduce((a, l) => a + l.calories, 0));
+  const hasC  = cData.some(v => v > 0);
+  document.getElementById('chart-calories').parentElement.style.display = hasC ? 'block' : 'none';
+  document.getElementById('cal-chart-empty').style.display              = hasC ? 'none'  : 'block';
+  charts.calories.data.labels = labels;
+  charts.calories.data.datasets[0].data = cData;
+  charts.calories.update();
+
+  // Steps
+  const sData = dates.map(d => state.cardio.filter(l => l.date === d).reduce((a, l) => a + l.steps, 0));
+  const hasS  = sData.some(v => v > 0);
+  document.getElementById('chart-steps').parentElement.style.display = hasS ? 'block' : 'none';
+  document.getElementById('steps-chart-empty').style.display         = hasS ? 'none'  : 'block';
+  charts.steps.data.labels = labels;
+  charts.steps.data.datasets[0].data = sData;
+  charts.steps.update();
+}
+
+function setRange(n, btn) {
+  state.range = n;
+  document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  updateCharts();
+}
+</script>
+</body>
+</html>
