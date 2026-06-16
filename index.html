@@ -373,7 +373,11 @@
       <div class="grid-2">
         <div class="field">
           <label class="label">Steps</label>
-          <input class="input" type="number" placeholder="8000" id="cf-steps" />
+          <input class="input" type="number" placeholder="8000" id="cf-steps"
+            oninput="this.dataset.manual='true'; document.getElementById('steps-note').style.display='none'" />
+          <div id="steps-note" style="display:none;font-size:0.7rem;color:var(--muted);margin-top:5px">
+            ≈ estimated from distance
+          </div>
         </div>
         <div class="field">
           <label class="label">Duration (min)</label>
@@ -381,7 +385,8 @@
         </div>
         <div class="field">
           <label class="label">Distance (km)</label>
-          <input class="input" type="number" step="0.1" placeholder="3.5" id="cf-distance" />
+          <input class="input" type="number" step="0.1" placeholder="3.5" id="cf-distance"
+            oninput="estimateSteps()" />
         </div>
         <div class="field">
           <label class="label">Date</label>
@@ -596,6 +601,24 @@ function switchLogType(type) {
   });
 }
 
+// ── Estimate Steps from Distance ──────────────────
+// Average step length ~0.77m → ~1,300 steps per km
+const STEPS_PER_KM = 1300;
+
+function estimateSteps() {
+  const stepsEl = document.getElementById('cf-steps');
+  const dist    = parseFloat(document.getElementById('cf-distance').value);
+  // Only auto-fill if user hasn't manually typed steps
+  if (dist > 0 && !stepsEl.dataset.manual) {
+    stepsEl.value = Math.round(dist * STEPS_PER_KM);
+    document.getElementById('steps-note').style.display = 'block';
+  } else if (!dist) {
+    // Clear estimate if distance is cleared
+    if (!stepsEl.dataset.manual) stepsEl.value = '';
+    document.getElementById('steps-note').style.display = 'none';
+  }
+}
+
 // ── Submit: Weight ─────────────────────────────────
 async function submitWeight(e) {
   e.preventDefault();
@@ -666,6 +689,10 @@ async function submitCardio(e) {
     ['cf-steps','cf-duration','cf-distance'].forEach(id => {
       document.getElementById(id).value = '';
     });
+    // Reset estimation state
+    const stepsEl = document.getElementById('cf-steps');
+    delete stepsEl.dataset.manual;
+    document.getElementById('steps-note').style.display = 'none';
     renderDashboard(); renderGoals(); updateCharts();
     showToast('Activity logged ✓');
   } catch { showToast('Failed to save', 'error'); }
