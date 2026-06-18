@@ -370,9 +370,8 @@
       <div class="field">
         <label class="label">Activity Type</label>
         <select class="input" id="cf-activity">
-          <option>Walking</option><option>Running</option><option>Cycling</option>
-          <option>Swimming</option><option>HIIT</option><option>Gym</option>
-          <option>Yoga</option><option>Other</option>
+          <option>Walking</option><option>Running</option><option>Basketball</option>
+          <option>Football</option><option>Weights</option>
         </select>
       </div>
       <div class="grid-2">
@@ -524,7 +523,7 @@ function pct(current, goal) {
 
 // ── Constants ─────────────────────────────────────
 const TDEE_BASE    = 1800; // baseline kcal burned per day
-const ACTIVITY_KCAL = { Walking: 300, Running: 600, Basketball: 500 };
+const ACTIVITY_KCAL = { Walking: 300, Running: 600, Basketball: 500, Football: 550, Weights: 300 };
 
 // ── Helpers ────────────────────────────────────────
 function getActivityCalories(activity, durationMin) {
