@@ -118,12 +118,7 @@
     .card       { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; margin: 0 20px 16px; }
     .card-flush { padding: 0; overflow: hidden; }
 
-    /* ── Recent Entries ───────────────────────────── */
-    .entry        { display: flex; align-items: center; justify-content: space-between; padding: 13px 18px; border-bottom: 1px solid var(--border); }
-    .entry:last-child { border-bottom: none; }
-    .entry-title  { font-size: 0.9rem; font-weight: 500; }
-    .entry-sub    { font-size: 0.73rem; color: var(--muted); margin-top: 2px; }
-    .entry-val    { font-family: 'Bebas Neue', cursive; font-size: 1.3rem; letter-spacing: 0.04em; }
+
 
     /* ── Empty State ──────────────────────────────── */
     .empty-state { text-align: center; padding: 36px 20px; color: var(--muted); font-size: 0.85rem; }
@@ -217,6 +212,22 @@
       .mini-value { font-size: 1.3rem; }
       .sub-tab   { font-size: 0.7rem; padding: 8px 2px; }
     }
+
+    /* ── Summary Strip ────────────────────────────── */
+    .summary-strip { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 0 20px; margin-bottom: 16px; }
+    .sum-card      { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px; }
+    .sum-label     { font-size: 0.63rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 6px; }
+    .sum-value     { font-family: 'Bebas Neue', cursive; font-size: 1.6rem; line-height: 1; letter-spacing: 0.02em; }
+    .sum-sub       { font-size: 0.63rem; color: var(--muted); margin-top: 3px; }
+
+    /* ── Weight Loss Card ─────────────────────────── */
+    .wl-card       { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; margin: 0 20px 16px; }
+    .wl-title      { font-family: 'Bebas Neue', cursive; font-size: 1rem; letter-spacing: 0.08em; color: #8ab0cc; margin-bottom: 16px; }
+    .wl-grid       { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .wl-item-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 6px; }
+    .wl-item-value { font-family: 'Bebas Neue', cursive; font-size: 2rem; line-height: 1; letter-spacing: 0.02em; }
+    .wl-item-sub   { font-size: 0.68rem; color: var(--muted); margin-top: 5px; }
+    .wl-note       { font-size: 0.72rem; color: var(--muted); margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
   </style>
 </head>
 <body>
@@ -283,13 +294,7 @@
     <button onclick="gotoLog('cardio')">🏃 Activity</button>
   </div>
 
-  <div class="section-label">Recent Entries</div>
-  <div class="card card-flush" id="recent-list">
-    <div class="empty-state">
-      <span class="empty-icon">📋</span>
-      No entries yet — start logging!
-    </div>
-  </div>
+
 
 </section>
 
@@ -403,10 +408,12 @@
 <section id="tab-progress" class="tab-content">
 
   <div class="range-btns">
-    <button class="range-btn active" onclick="setRange(7,  this)">7D</button>
-    <button class="range-btn"        onclick="setRange(14, this)">14D</button>
-    <button class="range-btn"        onclick="setRange(30, this)">30D</button>
+    <button class="range-btn active" onclick="setPeriod('week',  this)">This Week</button>
+    <button class="range-btn"        onclick="setPeriod('month', this)">This Month</button>
   </div>
+
+  <div id="summary-strip"></div>
+  <div id="weight-loss-card"></div>
 
   <div class="section-label">Weight Trend</div>
   <div class="card">
@@ -483,7 +490,7 @@ const state = {
   nutrition: [],
   cardio:    [],
   goals:     { calories: 2000, steps: 10000, weight: 70, protein: 150 },
-  range:     7,
+  period:    'week',
 };
 
 let charts = {};
@@ -515,7 +522,46 @@ function pct(current, goal) {
   return Math.min(100, Math.round((current / goal) * 100));
 }
 
-// ── Loading & Toast ────────────────────────────────
+// ── Constants ─────────────────────────────────────
+const TDEE_BASE    = 1800; // baseline kcal burned per day
+const ACTIVITY_KCAL = { Walking: 300, Running: 600, Basketball: 500 };
+
+// ── Helpers ────────────────────────────────────────
+function getActivityCalories(activity, durationMin) {
+  const rate = ACTIVITY_KCAL[activity] || 0;
+  return Math.round(rate * (durationMin / 60));
+}
+
+function getDailyBurn(date) {
+  const activityCal = state.cardio
+    .filter(l => l.date === date)
+    .reduce((a, l) => a + getActivityCalories(l.activity, l.duration), 0);
+  return TDEE_BASE + activityCal;
+}
+
+function getPeriodDates(period) {
+  const now   = new Date();
+  const dates = [];
+  let start;
+  if (period === 'week') {
+    const day = now.getDay(); // 0=Sun
+    start = new Date(now);
+    start.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
+  } else {
+    start = new Date(now.getFullYear(), now.getMonth(), 1);
+  }
+  const cur = new Date(start);
+  cur.setHours(0, 0, 0, 0);
+  const end = new Date(now);
+  end.setHours(0, 0, 0, 0);
+  while (cur <= end) {
+    dates.push(cur.toISOString().split('T')[0]);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return dates;
+}
+
+// ── Loading & Toast ─────────────────────────────────
 function showLoading(on) {
   document.getElementById('loading-overlay').classList.toggle('hidden', !on);
 }
@@ -575,6 +621,7 @@ async function loadAll() {
   } finally {
     showLoading(false);
   }
+  renderSummary(state.period);
 }
 
 function normalizeWeight(r)    { return { id: r.id, date: r.date, weight: +r.weight, unit: r.unit || 'kg' }; }
@@ -585,7 +632,10 @@ function normalizeCardio(r)    { return { id: r.id, date: r.date, activity: r.ac
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
   document.querySelectorAll('.tab-content').forEach(s => s.classList.toggle('active', s.id === `tab-${name}`));
-  if (name === 'progress') updateCharts();
+  if (name === 'progress') {
+    renderSummary(state.period);
+    updateCharts(getPeriodDates(state.period));
+  }
 }
 
 function gotoLog(type) {
@@ -660,7 +710,7 @@ async function submitNutrition(e) {
     ['nf-label','nf-calories','nf-protein','nf-carbs','nf-fat'].forEach(id => {
       document.getElementById(id).value = '';
     });
-    renderDashboard(); renderGoals(); updateCharts();
+    renderDashboard(); renderGoals(); renderSummary(state.period); updateCharts(getPeriodDates(state.period));
     showToast('Meal logged ✓');
   } catch { showToast('Failed to save', 'error'); }
   finally   { btn.disabled = false; btn.textContent = 'Log Meal'; }
@@ -693,7 +743,7 @@ async function submitCardio(e) {
     const stepsEl = document.getElementById('cf-steps');
     delete stepsEl.dataset.manual;
     document.getElementById('steps-note').style.display = 'none';
-    renderDashboard(); renderGoals(); updateCharts();
+    renderDashboard(); renderGoals(); renderSummary(state.period); updateCharts(getPeriodDates(state.period));
     showToast('Activity logged ✓');
   } catch { showToast('Failed to save', 'error'); }
   finally   { btn.disabled = false; btn.textContent = 'Log Activity'; }
@@ -714,7 +764,7 @@ async function submitGoals(e) {
     await apiCall('saveGoals', 'POST', goals);
     state.goals = goals;
     toggleGoalEdit();
-    renderDashboard(); renderGoals();
+    renderDashboard(); renderGoals(); renderSummary(state.period);
     showToast('Goals saved ✓');
   } catch { showToast('Failed to save', 'error'); }
   finally   { btn.disabled = false; btn.textContent = 'Save Goals'; }
@@ -749,43 +799,6 @@ function renderDashboard() {
   document.getElementById('step-bar').style.cssText =
     `width:${stepPct}%; background:${stepPct >= 100 ? 'var(--green)' : 'var(--blue)'}`;
 
-  // Recent entries (last 6 across all types)
-  const all = [
-    ...state.weight.map(l    => ({ ...l, _cat: 'weight'    })),
-    ...state.nutrition.map(l => ({ ...l, _cat: 'nutrition' })),
-    ...state.cardio.map(l    => ({ ...l, _cat: 'cardio'    })),
-  ].sort((a, b) => (b.id > a.id ? 1 : -1)).slice(0, 6);
-
-  const list = document.getElementById('recent-list');
-  if (!all.length) {
-    list.innerHTML = `<div class="empty-state"><span class="empty-icon">📋</span>No entries yet — start logging!</div>`;
-    return;
-  }
-
-  list.innerHTML = all.map(e => {
-    let title, val, color;
-    if (e._cat === 'weight') {
-      title = 'Body Weight';
-      val   = `${e.weight} ${e.unit}`;
-      color = 'var(--blue)';
-    } else if (e._cat === 'nutrition') {
-      title = e.label || 'Meal';
-      val   = `${e.calories} kcal`;
-      color = 'var(--amber)';
-    } else {
-      title = e.activity || 'Activity';
-      val   = e.steps ? `${e.steps.toLocaleString()} steps` : `${e.duration} min`;
-      color = 'var(--green)';
-    }
-    return `
-      <div class="entry">
-        <div>
-          <div class="entry-title">${title}</div>
-          <div class="entry-sub">${fmtDate(e.date)}</div>
-        </div>
-        <div class="entry-val" style="color:${color}">${val}</div>
-      </div>`;
-  }).join('');
 }
 
 // ── Render: Goals ──────────────────────────────────
@@ -847,6 +860,109 @@ function toggleGoalEdit() {
   }
 }
 
+// ── Render: Summary (Progress tab) ───────────────────
+function renderSummary(period) {
+  const dates     = getPeriodDates(period);
+  const totalDays = dates.length;
+  const label     = period === 'week' ? 'This Week' : 'This Month';
+
+  // Calories consumed — only count days with actual logs
+  const nutrDays   = dates.filter(d => state.nutrition.some(l => l.date === d));
+  const totalCalIn = nutrDays.reduce((a, d) =>
+    a + state.nutrition.filter(l => l.date === d).reduce((b, l) => b + l.calories, 0), 0
+  );
+  const avgCalIn   = nutrDays.length ? Math.round(totalCalIn / nutrDays.length) : 0;
+  // Extrapolate to full period for deficit calculation
+  const projCalIn  = avgCalIn * totalDays;
+
+  // Steps & distance
+  const totalSteps = dates.reduce((a, d) =>
+    a + state.cardio.filter(l => l.date === d).reduce((b, l) => b + l.steps, 0), 0
+  );
+  const avgSteps   = totalDays ? Math.round(totalSteps / totalDays) : 0;
+  const totalDist  = dates.reduce((a, d) =>
+    a + state.cardio.filter(l => l.date === d).reduce((b, l) => b + l.distance, 0), 0
+  );
+
+  // Calorie burn (TDEE base + activity bonus per day)
+  const totalBurn    = dates.reduce((a, d) => a + getDailyBurn(d), 0);
+  const hasCalData   = nutrDays.length > 0;
+  const deficit      = hasCalData ? totalBurn - projCalIn : null;   // positive = deficit (good)
+  const dailyDeficit = deficit !== null ? Math.round(deficit / totalDays) : null;
+
+  // Estimated weight loss
+  const estKg = deficit !== null ? +(deficit / 7700).toFixed(2) : null;
+
+  // Actual weight change from logs
+  const wInPeriod = state.weight
+    .filter(l => dates.includes(l.date))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const actualKg = wInPeriod.length >= 2
+    ? +((wInPeriod[0].weight - wInPeriod[wInPeriod.length - 1].weight).toFixed(1))
+    : null;
+
+  // ── Summary strip ──
+  const defColor = dailyDeficit !== null
+    ? (dailyDeficit >= 0 ? 'var(--green)' : 'var(--red)')
+    : 'var(--text)';
+
+  document.getElementById('summary-strip').innerHTML = `
+    <div class="summary-strip">
+      <div class="sum-card">
+        <div class="sum-label">Avg Calories</div>
+        <div class="sum-value col-amber">${avgCalIn || '—'}</div>
+        <div class="sum-sub">kcal / day</div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-label">Avg Steps</div>
+        <div class="sum-value col-blue">${avgSteps >= 1000 ? (avgSteps/1000).toFixed(1)+'k' : (avgSteps||'—')}</div>
+        <div class="sum-sub">/ day</div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-label">Total Distance</div>
+        <div class="sum-value col-green">${totalDist > 0 ? totalDist.toFixed(1) : '—'}</div>
+        <div class="sum-sub">km</div>
+      </div>
+      <div class="sum-card">
+        <div class="sum-label">Daily Deficit</div>
+        <div class="sum-value" style="color:${defColor}">
+          ${dailyDeficit !== null ? Math.abs(dailyDeficit) : '—'}
+        </div>
+        <div class="sum-sub">
+          ${dailyDeficit !== null ? (dailyDeficit >= 0 ? 'kcal deficit' : 'kcal surplus') : 'log calories'}
+        </div>
+      </div>
+    </div>`;
+
+  // ── Weight loss card ──
+  const estVal   = estKg   !== null ? `${estKg   > 0 ? '-' : '+'}${Math.abs(estKg)} kg`   : '—';
+  const actVal   = actualKg !== null ? `${actualKg > 0 ? '-' : '+'}${Math.abs(actualKg)} kg` : '—';
+  const estColor = estKg   !== null ? (estKg   > 0 ? 'var(--green)' : 'var(--red)') : 'var(--muted)';
+  const actColor = actualKg !== null ? (actualKg > 0 ? 'var(--green)' : 'var(--red)') : 'var(--muted)';
+  const actSub   = actualKg !== null ? 'from weight logs' : 'log your weight to track';
+  const noteText = hasCalData
+    ? `Burn estimate: ${TDEE_BASE} base + activity calories. Intake extrapolated from ${nutrDays.length}/${totalDays} logged days.`
+    : 'Start logging calories to see your deficit and weight projection.';
+
+  document.getElementById('weight-loss-card').innerHTML = `
+    <div class="wl-card">
+      <div class="wl-title">⚖️ Weight Progress — ${label}</div>
+      <div class="wl-grid">
+        <div class="wl-item">
+          <div class="wl-item-label">Estimated Loss</div>
+          <div class="wl-item-value" style="color:${estColor}">${estVal}</div>
+          <div class="wl-item-sub">${estKg !== null ? 'calorie-based projection' : 'log calories to estimate'}</div>
+        </div>
+        <div class="wl-item">
+          <div class="wl-item-label">Actual Loss</div>
+          <div class="wl-item-value" style="color:${actColor}">${actVal}</div>
+          <div class="wl-item-sub">${actSub}</div>
+        </div>
+      </div>
+      <div class="wl-note">${noteText}</div>
+    </div>`;
+}
+
 // ── Charts ─────────────────────────────────────────
 const BASE_CHART_OPTS = {
   responsive:          true,
@@ -893,12 +1009,12 @@ function initCharts() {
     options: BASE_CHART_OPTS,
   });
 
-  updateCharts();
+  updateCharts(getPeriodDates(state.period));
 }
 
-function updateCharts() {
+function updateCharts(dates) {
   if (!charts.weight) return;
-  const dates  = getDateRange(state.range);
+  dates        = dates || getPeriodDates(state.period);
   const labels = dates.map(fmtShort);
 
   // Weight (carry forward last known value)
@@ -929,11 +1045,12 @@ function updateCharts() {
   charts.steps.update();
 }
 
-function setRange(n, btn) {
-  state.range = n;
+function setPeriod(period, btn) {
+  state.period = period;
   document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
-  updateCharts();
+  renderSummary(period);
+  updateCharts(getPeriodDates(period));
 }
 </script>
 </body>
