@@ -345,6 +345,10 @@
           <option value="chicken">Chicken (200gr)</option>
         </select>
       </div>
+      <div class="field" id="nf-qty-wrap" style="display:none">
+        <label class="label">Quantity</label>
+        <input class="input" type="number" min="0.5" step="0.5" value="1" id="nf-qty" oninput="applyFoodPreset()" />
+      </div>
       <div class="field">
         <label class="label">Meal Label</label>
         <input class="input" type="text" placeholder="Breakfast, Lunch, Snack…" id="nf-label" />
@@ -545,12 +549,18 @@ const FOOD_PRESETS = {
 };
 
 function applyFoodPreset() {
-  const key = document.getElementById('nf-preset').value;
-  if (!key) return; // "Custom / Other" — leave fields as they are
-  const f = FOOD_PRESETS[key];
-  document.getElementById('nf-label').value    = f.label;
-  document.getElementById('nf-calories').value = f.calories;
-  document.getElementById('nf-protein').value  = f.protein;
+  const key    = document.getElementById('nf-preset').value;
+  const qtyWrap = document.getElementById('nf-qty-wrap');
+  if (!key) {
+    qtyWrap.style.display = 'none'; // "Custom / Other" — leave fields as they are
+    return;
+  }
+  qtyWrap.style.display = 'block';
+  const qty = parseFloat(document.getElementById('nf-qty').value) || 1;
+  const f   = FOOD_PRESETS[key];
+  document.getElementById('nf-label').value    = qty === 1 ? f.label : `${f.label} × ${qty}`;
+  document.getElementById('nf-calories').value = Math.round(f.calories * qty);
+  document.getElementById('nf-protein').value  = Math.round(f.protein * qty * 10) / 10;
   document.getElementById('nf-carbs').value    = '';
   document.getElementById('nf-fat').value      = '';
 }
@@ -755,6 +765,8 @@ async function submitNutrition(e) {
       document.getElementById(id).value = '';
     });
     document.getElementById('nf-preset').value = '';
+    document.getElementById('nf-qty').value = '1';
+    document.getElementById('nf-qty-wrap').style.display = 'none';
     renderDashboard(); renderGoals(); renderSummary(state.period); updateCharts(getPeriodDates(state.period));
     showToast('Meal logged ✓');
   } catch { showToast('Failed to save', 'error'); }
