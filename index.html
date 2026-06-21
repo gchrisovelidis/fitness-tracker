@@ -335,6 +335,17 @@
   <div id="log-nutrition" class="card" style="display:none">
     <form onsubmit="submitNutrition(event)">
       <div class="field">
+        <label class="label">Quick Add</label>
+        <select class="input" id="nf-preset" onchange="applyFoodPreset()">
+          <option value="">— Custom / Other —</option>
+          <option value="yogurt">Yogurt (200gr)</option>
+          <option value="proteinMilk">Protein Milk (330 ml)</option>
+          <option value="proteinScoop">Protein Scoop</option>
+          <option value="egg">Egg</option>
+          <option value="chicken">Chicken (200gr)</option>
+        </select>
+      </div>
+      <div class="field">
         <label class="label">Meal Label</label>
         <input class="input" type="text" placeholder="Breakfast, Lunch, Snack…" id="nf-label" />
       </div>
@@ -525,6 +536,25 @@ function pct(current, goal) {
 const TDEE_BASE    = 1800; // baseline kcal burned per day
 const ACTIVITY_KCAL = { Walking: 300, Running: 600, Basketball: 500, Football: 550, Weights: 300 };
 
+const FOOD_PRESETS = {
+  yogurt:       { label: 'Yogurt (200gr)',       calories: 150, protein: 20 },
+  proteinMilk:  { label: 'Protein Milk (330 ml)', calories: 215, protein: 35 },
+  proteinScoop: { label: 'Protein Scoop',         calories: 120, protein: 25 },
+  egg:          { label: 'Egg',                   calories: 70,  protein: 6  },
+  chicken:      { label: 'Chicken (200gr)',       calories: 165, protein: 31 },
+};
+
+function applyFoodPreset() {
+  const key = document.getElementById('nf-preset').value;
+  if (!key) return; // "Custom / Other" — leave fields as they are
+  const f = FOOD_PRESETS[key];
+  document.getElementById('nf-label').value    = f.label;
+  document.getElementById('nf-calories').value = f.calories;
+  document.getElementById('nf-protein').value  = f.protein;
+  document.getElementById('nf-carbs').value    = '';
+  document.getElementById('nf-fat').value      = '';
+}
+
 // ── Helpers ────────────────────────────────────────
 function getActivityCalories(activity, durationMin) {
   const rate = ACTIVITY_KCAL[activity] || 0;
@@ -558,6 +588,21 @@ function getPeriodDates(period) {
     cur.setDate(cur.getDate() + 1);
   }
   return dates;
+}
+
+// Returns the last calendar day of the period (Sunday for week, last day of month)
+function getPeriodEnd(period) {
+  const now = new Date();
+  if (period === 'week') {
+    const day = now.getDay(); // 0=Sun
+    const end = new Date(now);
+    end.setDate(now.getDate() + (day === 0 ? 0 : 7 - day));
+    end.setHours(0, 0, 0, 0);
+    return end;
+  }
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  end.setHours(0, 0, 0, 0);
+  return end;
 }
 
 // ── Loading & Toast ─────────────────────────────────
@@ -709,6 +754,7 @@ async function submitNutrition(e) {
     ['nf-label','nf-calories','nf-protein','nf-carbs','nf-fat'].forEach(id => {
       document.getElementById(id).value = '';
     });
+    document.getElementById('nf-preset').value = '';
     renderDashboard(); renderGoals(); renderSummary(state.period); updateCharts(getPeriodDates(state.period));
     showToast('Meal logged ✓');
   } catch { showToast('Failed to save', 'error'); }
@@ -865,19 +911,12 @@ function renderSummary(period) {
   const totalDays = dates.length;
   const label     = period === 'week' ? 'This Week' : 'This Month';
 
-  // Full period length to project toward (7 days for week, full month days for month)
-  const now = new Date();
-  const fullDays = period === 'week'
-    ? 7
-    : new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-
-  // Calories consumed — only count days with actual logs, then project to full period
+  // Calories consumed — only count days with actual logs
   const nutrDays   = dates.filter(d => state.nutrition.some(l => l.date === d));
   const totalCalIn = nutrDays.reduce((a, d) =>
     a + state.nutrition.filter(l => l.date === d).reduce((b, l) => b + l.calories, 0), 0
   );
-  const avgCalIn  = nutrDays.length ? Math.round(totalCalIn / nutrDays.length) : 0;
-  const projCalIn = avgCalIn * fullDays;   // ← project to full 7 or 30 days
+  const avgCalIn = nutrDays.length ? Math.round(totalCalIn / nutrDays.length) : 0;
 
   // Steps & distance (actual logged totals)
   const totalSteps = dates.reduce((a, d) =>
@@ -888,16 +927,25 @@ function renderSummary(period) {
     a + state.cardio.filter(l => l.date === d).reduce((b, l) => b + l.distance, 0), 0
   );
 
-  // Calorie burn — average logged daily burn projected to full period
-  const loggedBurn   = dates.reduce((a, d) => a + getDailyBurn(d), 0);
-  const avgDailyBurn = totalDays ? loggedBurn / totalDays : TDEE_BASE;
-  const projBurn     = avgDailyBurn * fullDays;  // ← project to full period
+  // Actual daily deficit/surplus for each day you logged calories (real numbers, no averaging)
+  const dailyDeltas = nutrDays.map(d => {
+    const calIn = state.nutrition.filter(l => l.date === d).reduce((a, l) => a + l.calories, 0);
+    return getDailyBurn(d) - calIn;
+  });
+  const actualDeficitSum = dailyDeltas.reduce((a, v) => a + v, 0);
+  const avgDailyDeficit  = nutrDays.length ? Math.round(actualDeficitSum / nutrDays.length) : null;
+
+  // Project only the remaining days — from tomorrow through period end — at your current average pace
+  const periodEnd     = getPeriodEnd(period);
+  const todayMid       = new Date(); todayMid.setHours(0, 0, 0, 0);
+  const remainingDays  = Math.max(0, Math.round((periodEnd - todayMid) / 86400000));
+  const projectedRest  = avgDailyDeficit !== null ? avgDailyDeficit * remainingDays : 0;
 
   const hasCalData   = nutrDays.length > 0;
-  const deficit      = hasCalData ? projBurn - projCalIn : null;
-  const dailyDeficit = deficit !== null ? Math.round(deficit / fullDays) : null;
+  const deficit      = hasCalData ? actualDeficitSum + projectedRest : null;
+  const dailyDeficit = avgDailyDeficit;
 
-  // Estimated weight loss projected to full period
+  // Estimated weight loss: actual logged days + projected remaining days to period end
   const estKg = deficit !== null ? +(deficit / 7700).toFixed(2) : null;
 
   // Actual weight change from logs
@@ -948,7 +996,7 @@ function renderSummary(period) {
   const actColor = actualKg !== null ? (actualKg > 0 ? 'var(--green)' : 'var(--red)') : 'var(--muted)';
   const actSub   = actualKg !== null ? 'from weight logs' : 'log your weight to track';
   const noteText = hasCalData
-    ? `Projected to full ${fullDays} days based on your average from ${nutrDays.length} logged day(s). Burn = ${TDEE_BASE} kcal base + activity calories.`
+    ? `Actual deficit counted for ${nutrDays.length} logged day(s). Remaining ${remainingDays} day(s) until ${period === 'week' ? 'week' : 'month'} end projected at your average pace of ${Math.abs(avgDailyDeficit)} kcal/day ${avgDailyDeficit >= 0 ? 'deficit' : 'surplus'}.`
     : 'Start logging calories to see your deficit and weight projection.';
 
   document.getElementById('weight-loss-card').innerHTML = `
