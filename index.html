@@ -934,10 +934,11 @@ function renderSummary(period) {
   const totalSteps = dates.reduce((a, d) =>
     a + state.cardio.filter(l => l.date === d).reduce((b, l) => b + l.steps, 0), 0
   );
-  const avgSteps  = totalDays ? Math.round(totalSteps / totalDays) : 0;
-  const totalDist = dates.reduce((a, d) =>
-    a + state.cardio.filter(l => l.date === d).reduce((b, l) => b + l.distance, 0), 0
+  const avgSteps   = totalDays ? Math.round(totalSteps / totalDays) : 0;
+  const totalProtein = nutrDays.reduce((a, d) =>
+    a + state.nutrition.filter(l => l.date === d).reduce((b, l) => b + l.protein, 0), 0
   );
+  const avgProtein = nutrDays.length ? Math.round(totalProtein / nutrDays.length) : 0;
 
   // Actual daily deficit/surplus for each day you logged calories (real numbers, no averaging)
   const dailyDeltas = nutrDays.map(d => {
@@ -986,9 +987,9 @@ function renderSummary(period) {
         <div class="sum-sub">/ day</div>
       </div>
       <div class="sum-card">
-        <div class="sum-label">Total Distance</div>
-        <div class="sum-value col-green">${totalDist > 0 ? totalDist.toFixed(1) : '—'}</div>
-        <div class="sum-sub">km</div>
+        <div class="sum-label">Avg Protein</div>
+        <div class="sum-value col-purple">${avgProtein || '—'}</div>
+        <div class="sum-sub">g / day</div>
       </div>
       <div class="sum-card">
         <div class="sum-label">Daily Deficit</div>
