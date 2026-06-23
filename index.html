@@ -738,7 +738,7 @@ async function submitWeight(e) {
     entry.id = id;
     state.weight.push(entry);
     document.getElementById('wf-weight').value = '';
-    renderDashboard(); updateCharts();
+    renderDashboard(); renderGoals(); renderSummary(state.period); updateCharts(getPeriodDates(state.period));
     showToast('Weight logged ✓');
   } catch { showToast('Failed to save', 'error'); }
   finally   { btn.disabled = false; btn.textContent = 'Log Weight'; }
